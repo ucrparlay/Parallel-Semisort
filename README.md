@@ -43,7 +43,9 @@ If you have any questions, please submit an issue to this repository (recommende
 
 Reference
 --------
-Xiaojun Dong, Yunshu Wu, Zhongqi Wang, Laxman Dhulipala, Yan Gu, Yihan Sun. High-Performance and Flexible Parallel Algorithms for Semisort and Related Problems. To appear at *ACM Symposium on Parallelism in Algorithms and Architectures (SPAA)*, 2023.  
+Xiaojun Dong, Yunshu Wu, Zhongqi Wang, Laxman Dhulipala, Yan Gu, Yihan Sun. [High-Performance and Flexible Parallel Algorithms for Semisort and Related Problems](https://dl.acm.org/doi/10.1145/3558481.3591071). In *ACM Symposium on Parallelism in Algorithms and Architectures (SPAA)*, pp. 341–353, 2023.  
+
+Xiaojun Dong, Yunshu Wu, Zhongqi Wang, Laxman Dhulipala, Yan Gu, Yihan Sun. [High-Performance and Flexible Parallel Algorithms for Semisort and Related Problems](https://arxiv.org/abs/2304.10078). *arXiv preprint: 2304.10078*, 2023.  
 
 If you use our code, please cite our paper:
 ```
