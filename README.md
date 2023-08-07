@@ -1,27 +1,58 @@
+# Parallel Algorithms for Semisort and Related Problems
+This repository contains the code for our paper "High-Performance and Flexible Parallel Algorithms for Semisort and Related Problems". It includes the implementations for semisort, histogram, and collect-reduce. This repository is built on [ParlayLib](https://github.com/cmuparlay/parlaylib), we plan to integrate our code into the main branch of it. A full reference documentation of ParlayLib can be found [here](https://cmuparlay.github.io/parlaylib/).  
 
-# ParlayLib - A Toolkit for Programming Parallel Algorithms on Shared-Memory Multicore Machines
+Prerequisite
+--------
++ g++ or clang with C++17 features support (Tested with g++ 12.1.1 and clang 14.0.6) on Linux machines.
 
-[![Build status](https://github.com/cmuparlay/parlaylib/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/cmuparlay/parlaylib/actions)
-[![codecov](https://codecov.io/gh/cmuparlay/parlaylib/branch/master/graph/badge.svg)](https://codecov.io/gh/cmuparlay/parlaylib)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+Getting Code
+--------
+The code can be downloaded using git:
+```
+git clone https://github.com/ucrparlay/Parallel-Semisort.git
+```
 
+Compilation
+--------
+Compilation can be done by using the Makefile in the ``include/parlay/`` directory. The ``make`` command compiles the ``semisort``, `histogram`, and ``collect_reduce``.
+```
+cd include/parlay/
+make
+```
+It uses clang by default. To compile with g++, pass the flag ``GCC=1``.
+```
+make GCC=1
+```
 
-ParlayLib is a C++ library for developing efficient parallel algorithms and software on shared-memory multicore machines. It provides additional tools and primitives that go beyond what is available in the C++ standard library, and simplifies the task of programming provably efficient and scalable parallel algorithms. It consists of a sequence data type (analogous to std::vector), many parallel routines and algorithms, a work-stealing scheduler to support nested parallelism, and a scalable memory allocator. It has been developed over a period of seven years and used in a variety of software including the [PBBS benchmark suite](http://www.cs.cmu.edu/~pbbs/benchmarks.html), the [Ligra](http://jshun.github.io/ligra/), [Julienne](https://dl.acm.org/doi/pdf/10.1145/3087556.3087580), and [Aspen](https://github.com/ldhulipala/aspen) graph processing frameworks, the [Graph Based Benchmark Suite](https://github.com/ParAlg/gbbs), and the [PAM](https://cmuparlay.github.io/PAMWeb/) library for parallel balanced binary search trees, and an implementation of the TPC-H benchmark suite.
+To compile our code to run in sequential, use: 
+```
+make SERIAL=1 
+```
 
-Parlay is designed to be reasonably portable by being built upon mostly standards-compliant modern C++. It builds on [GCC](https://gcc.gnu.org/) and [Clang](https://clang.llvm.org/) on Linux, GCC and Apple Clang on OSX, and Microsoft Visual C++ ([MSVC](https://visualstudio.microsoft.com/vs/)) and [MinGW](http://www.mingw.org/) on Windows. It is also tested on GCC and Clang via Windows Subsystem for Linux ([WSL](https://docs.microsoft.com/en-us/windows/wsl/about)) and [Cygwin](https://www.cygwin.com/). Support beyond x86-64 has not yet been explored. We would warmly welcome contributions that seek to achieve this.
+Running Code
+--------
+Simply run
+```
+./semisort [n]
+```
+where ``n`` is the input size. The data generator can be configured in the file ``semisort.cpp``.  
 
-# Documentation
+Contact
+--------
+If you have any questions, please submit an issue to this repository (recommended) or send an email to the author at xdong038@ucr.edu.  
 
-You can find Parlay's full reference documentation [here](https://cmuparlay.github.io/parlaylib/)
+Reference
+--------
+Xiaojun Dong, Yunshu Wu, Zhongqi Wang, Laxman Dhulipala, Yan Gu, Yihan Sun. [High-Performance and Flexible Parallel Algorithms for Semisort and Related Problems](https://dl.acm.org/doi/10.1145/3558481.3591071). In *ACM Symposium on Parallelism in Algorithms and Architectures (SPAA)*, pp. 341–353, 2023.  
 
-# Examples
+Xiaojun Dong, Yunshu Wu, Zhongqi Wang, Laxman Dhulipala, Yan Gu, Yihan Sun. [High-Performance and Flexible Parallel Algorithms for Semisort and Related Problems](https://arxiv.org/abs/2304.10078). *arXiv preprint: 2304.10078*, 2023.  
 
-Parlay comes with over 50 example applications that you can learn from. You can find them in the [examples](./examples) directory.
-
-# Developer documentation
-
-If you are interested in contributing to Parlay, the following pages describe useful information about our testing and benchmarking setups. If you just want to use Parlay in your own projects, these links are not relevant to you.
-
-* [Static analysis](./analysis/README.md)
-* [Unit tests](./test/README.md)
-* [Benchmarks](./benchmark/README.md)
+If you use our code, please cite our paper:
+```
+@inproceedings{dong2023high,
+  author    = {Dong, Xiaojun and Wu, Yunshu and Wang, Zhongqi and Dhulipala, Laxman and Gu, Yan and Sun, Yihan},
+  title     = {High-Performance and Flexible Parallel Algorithms for Semisort and Related Problems},
+  booktitle = {ACM Symposium on Parallelism in Algorithms and Architectures (SPAA)},
+  year      = {2023},
+}
+```
