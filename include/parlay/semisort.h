@@ -13,50 +13,53 @@
 
 namespace parlay {
 
-constexpr size_t PARLAY_SEMI_SORT_BASE_CASE_SIZE = 1 << 14;
-constexpr size_t PARLAY_SEMI_SORT_LESS_BASE_CASE_SIZE = 1 << 14;
+constexpr size_t SEMISORT_BASE_CASE_SIZE = 1 << 14;
+constexpr double LOAD_FACTOR = 1.2;
 
-template<typename s_size_t, typename inplace_tag, typename InIterator, typename OutIterator, typename GetKey,
-         typename Hash, typename Equal>
+template<typename s_size_t, typename inplace_tag, typename assignment_tag, typename InIterator, typename OutIterator,
+         typename GetKey, typename Hash, typename Equal>
 sequence<s_size_t> semisort_equal_serial(slice<InIterator, InIterator> In, slice<OutIterator, OutIterator> Out,
-                                         GetKey g, Hash hash, Equal equal, bool return_offsets, size_t shift_bits) {
+                                         const GetKey& g, const Hash& hash, const Equal& equal, bool return_offsets,
+                                         size_t shift_bits) {
   size_t n = In.size();
   if (n == 0) {
     return sequence<s_size_t>{};
   }
-  size_t bits = log2_up(static_cast<size_t>(n * 1.1));
+  size_t bits = log2_up(static_cast<size_t>(n * LOAD_FACTOR));
   size_t size = size_t{1} << bits;
   size_t mask = size - 1;
   auto next = sequence<size_t>::uninitialized(n);
   auto table = sequence<size_t>(size, ULLONG_MAX);
-  for (size_t j = 0; j < n; j++) {
-    size_t v = (hash(g(In[j])) >> shift_bits) & mask;
-    while (table[v] != ULLONG_MAX && !equal(g(In[j]), g(In[table[v]]))) {
+  for (size_t i = 0; i < n; i++) {
+    size_t v = (hash(g(In[i])) >> shift_bits) & mask;
+    while (table[v] != ULLONG_MAX && !equal(g(In[i]), g(In[table[v]]))) {
       v = (v + 1) & mask;
     }
-    next[j] = table[v];
-    table[v] = j;
+    next[i] = table[v];
+    table[v] = i;
   }
   size_t pos = 0;
-  sequence<s_size_t> offsets;
-  for (size_t j = 0; j < size; j++) {
-    if (return_offsets) {
-      offsets.push_back(pos);
-    }
-    size_t idx = table[j];
+  for (size_t i = 0; i < size; i++) {
+    size_t idx = table[i];
     while (idx != ULLONG_MAX) {
-      if constexpr (inplace_tag::value == true) {
-        assign_dispatch(Out[pos++], In[idx], uninitialized_relocate_tag());
-      } else {
-        assign_dispatch(Out[pos++], In[idx], uninitialized_copy_tag());
-      }
+      assign_dispatch(Out[pos++], In[idx], assignment_tag());
       idx = next[idx];
     }
   }
-  if constexpr (inplace_tag::value == true) {
+  // reverse the order to make it stable
+  reverse_inplace(Out);
+  sequence<s_size_t> offsets;
+  if (return_offsets) {
     for (size_t i = 0; i < n; i++) {
-      assign_dispatch(In[i], Out[i], uninitialized_relocate_tag());
+      if (i == 0 || !equal(g(Out[i]), g(Out[i - 1]))) {
+        offsets.push_back(i);
+      }
     }
+    offsets.push_back(n);
+  }
+  // copy back if inplace
+  if constexpr (inplace_tag::value == true) {
+    uninitialized_relocate_n(In.begin(), Out.begin(), n);
   }
   return offsets;
 }
@@ -71,9 +74,11 @@ void semisort_serial_inplace(slice<Iterator, Iterator> In, GetKey g, Hash hash =
   auto Tmp = sequence<in_type>::uninitialized(In.size());
   size_t max32 = static_cast<size_t>((std::numeric_limits<uint32_t>::max)());
   if (In.size() < max32) {
-    semisort_equal_serial<uint32_t, std::true_type>(In, make_slice(Tmp), g, hash, equal, false, 0);
+    semisort_equal_serial<uint32_t, std::true_type, uninitialized_relocate_tag>(In, make_slice(Tmp), g, hash, equal,
+                                                                                false, 0);
   } else {
-    semisort_equal_serial<size_t, std::true_type>(In, make_slice(Tmp), g, hash, equal, false, 0);
+    semisort_equal_serial<size_t, std::true_type, uninitialized_relocate_tag>(In, make_slice(Tmp), g, hash, equal,
+                                                                              false, 0);
   }
 }
 
@@ -86,7 +91,7 @@ auto sample_heavy_keys(slice<InIterator, InIterator> In, const GetKey& g, const 
   size_t NUM_SAMPLES = HEAVY_THRESHOLD * SAMPLE_QUOTIENT;
 
   sequence<std::pair<size_t, size_t>> heavy_seq;
-  size_t hash_table_size = size_t{1} << log2_up(static_cast<size_t>(NUM_SAMPLES * 1.1));
+  size_t hash_table_size = size_t{1} << log2_up(static_cast<size_t>(NUM_SAMPLES * LOAD_FACTOR));
   size_t hash_table_mask = hash_table_size - 1;
   sequence<std::pair<size_t, size_t>> hash_table(hash_table_size, {ULLONG_MAX, 0});
   for (size_t i = 0; i < NUM_SAMPLES; i++) {
@@ -109,8 +114,8 @@ auto sample_heavy_keys(slice<InIterator, InIterator> In, const GetKey& g, const 
   return heavy_seq;
 }
 
-template<typename s_size_t, typename inplace_tag, typename InIterator, typename OutIterator, typename TmpIterator,
-         typename GetKey, typename Hash, typename Equal>
+template<typename s_size_t, typename inplace_tag, typename assignment_tag, typename InIterator, typename OutIterator,
+         typename TmpIterator, typename GetKey, typename Hash, typename Equal>
 sequence<s_size_t> semisort_equal_(slice<InIterator, InIterator> In, slice<OutIterator, OutIterator> Out,
                                    slice<TmpIterator, TmpIterator> Tmp, const GetKey& g, const Hash& hash,
                                    const Equal& equal, bool return_offsets = false, size_t shift_bits = 0,
@@ -119,8 +124,9 @@ sequence<s_size_t> semisort_equal_(slice<InIterator, InIterator> In, slice<OutIt
   using key_type = typename std::invoke_result<GetKey, in_type>::type;
   constexpr size_t hash_bits = sizeof(typename std::invoke_result<Hash, key_type>::type) * 8;
   size_t n = In.size();
-  if (n < PARLAY_SEMI_SORT_BASE_CASE_SIZE || parallelism < .0001 || shift_bits == hash_bits) {
-    return semisort_equal_serial<s_size_t, inplace_tag>(In, Out, g, hash, equal, return_offsets, shift_bits);
+  if (n < SEMISORT_BASE_CASE_SIZE || parallelism < .0001 || shift_bits == hash_bits) {
+    return semisort_equal_serial<s_size_t, inplace_tag, assignment_tag>(In, Out, g, hash, equal, return_offsets,
+                                                                        shift_bits);
   }
   internal::timer t;
 
@@ -171,19 +177,16 @@ sequence<s_size_t> semisort_equal_(slice<InIterator, InIterator> In, slice<OutIt
       return hash_v & LIGHT_MASK;
     }
   };
-  auto get_bits = delayed_seq<s_size_t>(n, f);
+  // We assume the bucket size is less than 2^16
+  auto get_bits = tabulate<uint16_t>(n, f);
   auto bucket_offsets = sequence<size_t>();
-  if constexpr (inplace_tag::value == true) {
-    bucket_offsets = std::get<0>(
-        internal::count_sort<uninitialized_relocate_tag>(In, Out, make_slice(get_bits), num_buckets, parallelism));
-  } else {
-    bucket_offsets = std::get<0>(
-        internal::count_sort<uninitialized_copy_tag>(In, Out, make_slice(get_bits), num_buckets, parallelism));
-  }
+  bucket_offsets = std::get<0>(
+      internal::count_sort_<assignment_tag, s_size_t>(In, Out, make_slice(get_bits), num_buckets, parallelism, false));
 
   if (parallelism == 1.0) t_dis.next("component of distribute: buckets");
 
   if constexpr (inplace_tag::value == true) {
+    // copy the heavy keys back if inplace
     size_t light_keys = bucket_offsets[light_buckets];
     parallel_for(0, n - light_keys, [&](size_t i) {
       assign_dispatch(In[light_keys + i], Out[light_keys + i], uninitialized_relocate_tag());
@@ -195,10 +198,7 @@ sequence<s_size_t> semisort_equal_(slice<InIterator, InIterator> In, slice<OutIt
   if (parallelism == 1.0) t.next("distribute");
 
   // 3. sort within each bucket
-  sequence<sequence<s_size_t>> inner_offsets;
-  if (return_offsets) {
-    inner_offsets = sequence<sequence<s_size_t>>(light_buckets + 1);
-  }
+  sequence<sequence<s_size_t>> inner_offsets(return_offsets ? light_buckets + 1 : 0);
   parallel_for(
       0, light_buckets,
       [&](size_t i) {
@@ -207,7 +207,7 @@ sequence<s_size_t> semisort_equal_(slice<InIterator, InIterator> In, slice<OutIt
         if (start != end) {
           auto a = Out.cut(start, end);
           auto b = Tmp.cut(start, end);
-          auto r = semisort_equal_<s_size_t, typename std::negation<inplace_tag>::type>(
+          auto r = semisort_equal_<s_size_t, typename std::negation<inplace_tag>::type, uninitialized_relocate_tag>(
               a, b, a, g, hash, equal, return_offsets, shift_bits + LOG2_LIGHT_KEYS,
               (parallelism * (end - start)) / (n + 1));
           if (return_offsets) {
@@ -241,9 +241,11 @@ auto semisort_equal(slice<Iterator, Iterator> In, GetKey g, Hash hash = {}, Equa
   auto Tmp = sequence<in_type>::uninitialized(In.size());
   size_t max32 = static_cast<size_t>((std::numeric_limits<uint32_t>::max)());
   if (In.size() < max32) {
-    semisort_equal_<uint32_t, std::false_type>(In, make_slice(Out), make_slice(Tmp), g, hash, equal);
+    semisort_equal_<uint32_t, std::false_type, uninitialized_copy_tag>(In, make_slice(Out), make_slice(Tmp), g, hash,
+                                                                       equal);
   } else {
-    semisort_equal_<size_t, std::false_type>(In, make_slice(Out), make_slice(Tmp), g, hash, equal);
+    semisort_equal_<size_t, std::false_type, uninitialized_copy_tag>(In, make_slice(Out), make_slice(Tmp), g, hash,
+                                                                     equal);
   }
   return Out;
 }
@@ -258,14 +260,14 @@ void semisort_equal_inplace(slice<Iterator, Iterator> In, GetKey g, Hash hash = 
   auto Tmp = sequence<in_type>::uninitialized(In.size());
   size_t max32 = static_cast<size_t>((std::numeric_limits<uint32_t>::max)());
   if (In.size() < max32) {
-    semisort_equal_<uint32_t, std::true_type>(In, make_slice(Tmp), In, g, hash, equal);
+    semisort_equal_<uint32_t, std::true_type, uninitialized_relocate_tag>(In, make_slice(Tmp), In, g, hash, equal);
   } else {
-    semisort_equal_<size_t, std::true_type>(In, make_slice(Tmp), In, g, hash, equal);
+    semisort_equal_<size_t, std::true_type, uninitialized_relocate_tag>(In, make_slice(Tmp), In, g, hash, equal);
   }
 }
 
-template<typename s_size_t, typename inplace_tag, typename InIterator, typename OutIterator, typename TmpIterator,
-         typename GetKey, typename Hash, typename Compare>
+template<typename s_size_t, typename inplace_tag, typename assignment_tag, typename InIterator, typename OutIterator,
+         typename TmpIterator, typename GetKey, typename Hash, typename Compare>
 sequence<s_size_t> semisort_less_(slice<InIterator, InIterator> In, slice<OutIterator, OutIterator> Out,
                                   slice<TmpIterator, TmpIterator> Tmp, const GetKey& g, const Hash& hash,
                                   const Compare& comp, bool return_offsets = false, size_t shift_bits = 0,
@@ -275,7 +277,7 @@ sequence<s_size_t> semisort_less_(slice<InIterator, InIterator> In, slice<OutIte
   auto equal = [&comp](const key_type& a, const key_type& b) { return !comp(a, b) && !comp(b, a); };
   constexpr size_t hash_bits = sizeof(typename std::invoke_result<Hash, key_type>::type) * 8;
   size_t n = In.size();
-  if (n < PARLAY_SEMI_SORT_LESS_BASE_CASE_SIZE || parallelism < .0001 || shift_bits == hash_bits) {
+  if (n < SEMISORT_BASE_CASE_SIZE || parallelism < .0001 || shift_bits == hash_bits) {
     sequence<s_size_t> offsets;
     if constexpr (inplace_tag::value == true) {
       internal::seq_sort_inplace(
@@ -286,12 +288,10 @@ sequence<s_size_t> semisort_less_(slice<InIterator, InIterator> In, slice<OutIte
             offsets.push_back(i);
           }
         }
+        offsets.push_back(n);
       }
     } else {
-      for (size_t i = 0; i < n; i++) {
-        assign_dispatch(Out[i], In[i], uninitialized_relocate_tag());
-      }
-      internal::seq_sort_<uninitialized_copy_tag>(
+      internal::seq_sort_<assignment_tag>(
           In, Out, [&](const in_type& a, const in_type& b) { return comp(g(a), g(b)); }, true);
       if (return_offsets) {
         for (size_t i = 0; i < n; i++) {
@@ -300,6 +300,7 @@ sequence<s_size_t> semisort_less_(slice<InIterator, InIterator> In, slice<OutIte
           }
         }
       }
+      offsets.push_back(n);
     }
     return offsets;
   }
@@ -352,19 +353,16 @@ sequence<s_size_t> semisort_less_(slice<InIterator, InIterator> In, slice<OutIte
       return hash_v & LIGHT_MASK;
     }
   };
-  auto get_bits = delayed_seq<s_size_t>(n, f);
+  // We assume the bucket size is less than 2^16
+  auto get_bits = tabulate<uint16_t>(n, f);
   auto bucket_offsets = sequence<size_t>();
-  if constexpr (inplace_tag::value == true) {
-    bucket_offsets = std::get<0>(
-        internal::count_sort<uninitialized_relocate_tag>(In, Out, make_slice(get_bits), num_buckets, parallelism));
-  } else {
-    bucket_offsets = std::get<0>(
-        internal::count_sort<uninitialized_copy_tag>(In, Out, make_slice(get_bits), num_buckets, parallelism));
-  }
+  bucket_offsets = std::get<0>(
+      internal::count_sort_<assignment_tag, s_size_t>(In, Out, make_slice(get_bits), num_buckets, parallelism, false));
 
   if (parallelism == 1.0) t_dis.next("component of distribute: buckets");
 
   if constexpr (inplace_tag::value == true) {
+    // copy the heavy keys back if inplace
     size_t light_keys = bucket_offsets[light_buckets];
     parallel_for(0, n - light_keys, [&](size_t i) {
       assign_dispatch(In[light_keys + i], Out[light_keys + i], uninitialized_relocate_tag());
@@ -388,7 +386,7 @@ sequence<s_size_t> semisort_less_(slice<InIterator, InIterator> In, slice<OutIte
         if (start != end) {
           auto a = Out.cut(start, end);
           auto b = Tmp.cut(start, end);
-          auto r = semisort_less_<s_size_t, typename std::negation<inplace_tag>::type>(
+          auto r = semisort_less_<s_size_t, typename std::negation<inplace_tag>::type, uninitialized_relocate_tag>(
               a, b, a, g, hash, comp, return_offsets, shift_bits + LOG2_LIGHT_KEYS,
               (parallelism * (end - start)) / (n + 1));
           if (return_offsets) {
@@ -422,9 +420,11 @@ auto semisort_less(slice<Iterator, Iterator> In, GetKey g, Hash hash = {}, Compa
   auto Tmp = sequence<in_type>::uninitialized(In.size());
   size_t max32 = static_cast<size_t>((std::numeric_limits<uint32_t>::max)());
   if (In.size() < max32) {
-    semisort_less_<uint32_t, std::false_type>(In, make_slice(Out), make_slice(Tmp), g, hash, comp);
+    semisort_less_<uint32_t, std::false_type, uninitialized_copy_tag>(In, make_slice(Out), make_slice(Tmp), g, hash,
+                                                                      comp);
   } else {
-    semisort_less_<size_t, std::false_type>(In, make_slice(Out), make_slice(Tmp), g, hash, comp);
+    semisort_less_<size_t, std::false_type, uninitialized_copy_tag>(In, make_slice(Out), make_slice(Tmp), g, hash,
+                                                                    comp);
   }
   return Out;
 }
@@ -439,9 +439,9 @@ void semisort_less_inplace(slice<Iterator, Iterator> In, GetKey g, Hash hash = {
   auto Tmp = sequence<in_type>::uninitialized(In.size());
   size_t max32 = static_cast<size_t>((std::numeric_limits<uint32_t>::max)());
   if (In.size() < max32) {
-    semisort_less_<uint32_t, std::true_type>(In, make_slice(Tmp), In, g, hash, comp);
+    semisort_less_<uint32_t, std::true_type, uninitialized_relocate_tag>(In, make_slice(Tmp), In, g, hash, comp);
   } else {
-    semisort_less_<size_t, std::true_type>(In, make_slice(Tmp), In, g, hash, comp);
+    semisort_less_<size_t, std::true_type, uninitialized_relocate_tag>(In, make_slice(Tmp), In, g, hash, comp);
   }
 }
 

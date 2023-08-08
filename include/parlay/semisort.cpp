@@ -11,33 +11,29 @@ using namespace parlay;
 
 size_t n = 1e9;
 #ifndef NGRAM
-size_t kNumTests = 6;
+size_t kNumTests = 4;
 #else
-size_t kNumTests = 3;
+size_t kNumTests = 2;
 #endif
-constexpr int NUM_ROUNDS = 3;
+constexpr int NUM_ROUNDS = 1;
 
 std::string test_name(int id) {
   switch (id) {
     case 0: return "Ours=";
     case 1: return "Ours<";
-    case 2: return "PLSS";
     case 3: return "Ours=-i";
     case 4: return "Ours<-i";
-    case 5: return "PLIS";
-    case 6: return "std::sort";
-    case 7: return "semisort_serial";
     default: assert(0);
   }
   return "";
 }
 
-template<class T>
-auto get_occurence(const sequence<pair<T, T>> &seq) {
+template<class K, class V>
+auto get_occurence(const sequence<pair<K, V>> &seq) {
   auto flags = delayed_seq<bool>(seq.size(), [&](size_t i) { return i == 0 || seq[i].first != seq[i - 1].first; });
   auto index = pack_index(flags);
   size_t num_keys = index.size();
-  sequence<pair<size_t, T>> occur_key(num_keys);
+  sequence<pair<size_t, K>> occur_key(num_keys);
   parallel_for(0, num_keys, [&](size_t i) {
     if (i == num_keys - 1) {
       occur_key[i] = {seq.size() - index[i], seq[index[i]].first};
@@ -49,40 +45,27 @@ auto get_occurence(const sequence<pair<T, T>> &seq) {
   return occur_key;
 }
 
-template<class T>
-void check_correctness(const sequence<pair<T, T>> &in, int id) {
+template<class K, class V>
+void check_correctness(const sequence<pair<K, V>> &in, int id) {
   auto out = in;
+  parallel_for(0, out.size(), [&](size_t i) { out[i].second = i; });
   switch (id) {
     case 0:
       semisort_equal_inplace(
-          make_slice(out), [](const pair<T, T> &kv) { return kv.first; }, [](const T &k) { return _hash(k); });
+          make_slice(out), [](const pair<K, V> &kv) { return kv.first; }, [](const K &k) { return _hash(k); });
       break;
     case 1:
       semisort_less_inplace(
-          make_slice(out), [](const pair<T, T> &kv) { return kv.first; }, [](const T &k) { return _hash(k); });
+          make_slice(out), [](const pair<K, V> &kv) { return kv.first; }, [](const K &k) { return _hash(k); });
       break;
     case 2:
-      parlay::internal::sample_sort_inplace(make_slice(out),
-                                            [](const pair<T, T> &a, const pair<T, T> &b) { return a.first < b.first; });
-      break;
-#ifndef NGRAM
-    case 3:
       semisort_equal_inplace(
-          make_slice(out), [](const pair<T, T> &kv) { return kv.first; }, [](const T &k) { return k; });
+          make_slice(out), [](const pair<K, V> &kv) { return kv.first; }, [](const K &k) { return k; });
       break;
-    case 4:
+    case 3:
       semisort_less_inplace(
-          make_slice(out), [](const pair<T, T> &kv) { return kv.first; }, [](const T &k) { return k; });
+          make_slice(out), [](const pair<K, V> &kv) { return kv.first; }, [](const K &k) { return k; });
       break;
-    case 5: parlay::internal::integer_sort_inplace(make_slice(out), [](const pair<T, T> &a) { return a.first; }); break;
-    case 6:
-      std::sort(out.begin(), out.end(), [](const pair<T, T> &a, const pair<T, T> &b) { return a.first < b.first; });
-      break;
-    case 7:
-      semisort_serial_inplace(
-          make_slice(out), [](const pair<T, T> &kv) { return kv.first; }, [](const T &k) { return _hash(k); });
-      break;
-#endif
     default: assert(0);
   }
 
@@ -92,7 +75,6 @@ void check_correctness(const sequence<pair<T, T>> &in, int id) {
   parallel_for(0, in.size(), [&](size_t i) {
     if (i == 0 || out[i].first != out[i - 1].first) {
       uint32_t v = _hash(out[i].first) % SIZE;
-      ;
       while (true) {
         if (vis[v] != MAX_VAL) {
           if (out[vis[v]].first == out[i].first) {
@@ -111,13 +93,18 @@ void check_correctness(const sequence<pair<T, T>> &in, int id) {
       }
     }
   });
+  parallel_for(1, out.size(), [&](size_t i) {
+    if (out[i - 1].first == out[i].first) {
+      assert(out[i - 1].second < out[i].second);
+    }
+  });
   auto out2 = sort(make_slice(in));
   assert(get_occurence(out) == get_occurence(out2));
   printf("Pass\n");
 }
 
-template<typename T>
-double test(const sequence<pair<T, T>> &in, int id) {
+template<typename K, typename V>
+double test(const sequence<pair<K, V>> &in, int id) {
   std::cout << "test_name: " << test_name(id) << std::endl;
   double total_time = 0;
   for (int i = 0; i <= NUM_ROUNDS; i++) {
@@ -126,36 +113,20 @@ double test(const sequence<pair<T, T>> &in, int id) {
     switch (id) {
       case 0:
         semisort_equal_inplace(
-            make_slice(out), [](const pair<T, T> &kv) { return kv.first; }, [](const T &k) { return _hash(k); });
+            make_slice(out), [](const pair<K, V> &kv) { return kv.first; }, [](const K &k) { return _hash(k); });
         break;
       case 1:
         semisort_less_inplace(
-            make_slice(out), [](const pair<T, T> &kv) { return kv.first; }, [](const T &k) { return _hash(k); });
+            make_slice(out), [](const pair<K, V> &kv) { return kv.first; }, [](const K &k) { return _hash(k); });
         break;
       case 2:
-        parlay::internal::sample_sort_inplace(
-            make_slice(out), [](const pair<T, T> &a, const pair<T, T> &b) { return a.first < b.first; });
-        break;
-#ifndef NGRAM
-      case 3:
         semisort_equal_inplace(
-            make_slice(out), [](const pair<T, T> &kv) { return kv.first; }, [](const T &k) { return k; });
+            make_slice(out), [](const pair<K, V> &kv) { return kv.first; }, [](const K &k) { return k; });
         break;
-      case 4:
+      case 3:
         semisort_less_inplace(
-            make_slice(out), [](const pair<T, T> &kv) { return kv.first; }, [](const T &k) { return k; });
+            make_slice(out), [](const pair<K, V> &kv) { return kv.first; }, [](const K &k) { return k; });
         break;
-      case 5:
-        parlay::internal::integer_sort_inplace(make_slice(out), [](const pair<T, T> &a) { return a.first; });
-        break;
-      case 6:
-        std::sort(out.begin(), out.end(), [](const pair<T, T> &a, const pair<T, T> &b) { return a.first < b.first; });
-        break;
-      case 7:
-        semisort_serial_inplace(
-            make_slice(out), [](const pair<T, T> &kv) { return kv.first; }, [](const T &k) { return _hash(k); });
-        break;
-#endif
       default: assert(0);
     }
     t.stop();
@@ -172,17 +143,17 @@ double test(const sequence<pair<T, T>> &in, int id) {
 }
 
 template<class T>
-void run_all(const sequence<pair<T, T>> &seq, int id = -1) {
+void run_all(const sequence<T> &seq, int id = -1) {
   // get_distribution(seq);
   vector<double> times;
   if (id == -1) {
     for (size_t i = 0; i < kNumTests; i++) {
-      times.push_back(test(seq, i));
+      // times.push_back(test(seq, i));
       check_correctness(seq, i);
       printf("\n");
     }
   } else {
-    times.push_back(test(seq, id));
+    // times.push_back(test(seq, id));
     check_correctness(seq, id);
     printf("\n");
   }
@@ -197,23 +168,30 @@ void run_all(const sequence<pair<T, T>> &seq, int id = -1) {
 template<class T>
 void run_all_dist(int id = -1) {
   // uniform distribution
-  vector<size_t> num_keys{10, 1000, 100000, 10000000, 1000000000};
+  vector<size_t> num_keys{1000000000, 10000000, 100000, 1000, 10};
   for (auto v : num_keys) {
-    auto seq = uniform_generator<T>(v);
+    auto seq = uniform_pairs_generator<T>(v);
     run_all(seq, id);
   }
 
   // exponential distribution
-  vector<double> lambda{0.0001, 0.00007, 0.00005, 0.00002, 0.00001};
+  vector<double> lambda{0.00001, 0.00002, 0.00005, 0.00007, 0.0001};
   for (auto v : lambda) {
-    auto seq = exponential_generator<T>(v);
+    auto seq = exponential_pairs_generator<T>(v);
     run_all(seq, id);
   }
 
   // zipfian distribution
-  vector<double> s{1.5, 1.2, 1, 0.8, 0.6};
+  vector<double> s{0.6, 0.8, 1, 1.2, 1.5};
   for (auto v : s) {
-    auto seq = zipfian_generator<T>(v);
+    auto seq = zipfian_pairs_generator<T>(v);
+    run_all(seq, id);
+  }
+
+  // bits exp distribution
+  vector<size_t> rate{10, 30, 50, 100, 300};
+  for (auto v : rate) {
+    auto seq = bits_exp_pairs_generator<T>(v);
     run_all(seq, id);
   }
 }
@@ -223,21 +201,21 @@ void run_scaling(int id = -1) {
   // uniform distribution
   vector<size_t> num_keys{1000, 10000000};
   for (auto v : num_keys) {
-    auto seq = uniform_generator<T>(v);
+    auto seq = uniform_pairs_generator<T>(v);
     run_all(seq, id);
   }
 
   // exponential distribution
   vector<double> lambda{0.00007, 0.00002};
   for (auto v : lambda) {
-    auto seq = exponential_generator<T>(v);
+    auto seq = exponential_pairs_generator<T>(v);
     run_all(seq, id);
   }
 
   // zipfian distribution
   vector<double> s{1.2, 0.8};
   for (auto v : s) {
-    auto seq = zipfian_generator<T>(v);
+    auto seq = zipfian_pairs_generator<T>(v);
     run_all(seq, id);
   }
 }
@@ -250,21 +228,21 @@ void run_all_size(int id = -1) {
     // uniform distribution
     vector<size_t> num_keys{1000, 10000000};
     for (auto v : num_keys) {
-      auto seq = uniform_generator<T>(v);
+      auto seq = uniform_pairs_generator<T>(v);
       run_all(seq, id);
     }
 
     // exponential distribution
     vector<double> lambda{0.00007, 0.00002};
     for (auto v : lambda) {
-      auto seq = exponential_generator<T>(v);
+      auto seq = exponential_pairs_generator<T>(v);
       run_all(seq, id);
     }
 
     // zipfian distribution
     vector<double> s{1.2, 0.8};
     for (auto v : s) {
-      auto seq = zipfian_generator<T>(v);
+      auto seq = zipfian_pairs_generator<T>(v);
       run_all(seq, id);
     }
   }
@@ -297,9 +275,9 @@ int main(int argc, char *argv[]) {
   }
   printf("n: %zu\n", n);
 
-  // int id = -1;
-  // run_all_dist<uint32_t>(id);
-  // run_all_dist<uint64_t>(id);
+  int id = -1;
+  run_all_dist<uint32_t>(id);
+  run_all_dist<uint64_t>(id);
   // run_all_dist<__uint128_t>(id);
 
   // int id = -1;
@@ -311,8 +289,15 @@ int main(int argc, char *argv[]) {
   // int id = -1;
   // run_scaling<uint64_t>(id);
 
-  int id = -1;
-  run_all_size<uint64_t>(id);
+  // int id = -1;
+  // run_all_size<uint64_t>(id);
+
+  // using T = __uint32_t;
+  // int id = 0;
+  // auto seq = uniform_strings_generator<T>(1000000000);
+  // auto seq = exponential_pairs_generator<T>(0.00001);
+  // auto seq = bits_exp_strings_generator<T>(10);
+  // run_all(seq, id);
 
   return 0;
 }
