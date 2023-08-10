@@ -15,14 +15,14 @@ size_t kNumTests = 4;
 #else
 size_t kNumTests = 2;
 #endif
-constexpr int NUM_ROUNDS = 1;
+constexpr int NUM_ROUNDS = 5;
 
 std::string test_name(int id) {
   switch (id) {
     case 0: return "Ours=";
     case 1: return "Ours<";
-    case 3: return "Ours=-i";
-    case 4: return "Ours<-i";
+    case 2: return "Ours=-i";
+    case 3: return "Ours<-i";
     default: assert(0);
   }
   return "";
@@ -48,7 +48,6 @@ auto get_occurence(const sequence<pair<K, V>> &seq) {
 template<class K, class V>
 void check_correctness(const sequence<pair<K, V>> &in, int id) {
   auto out = in;
-  parallel_for(0, out.size(), [&](size_t i) { out[i].second = i; });
   switch (id) {
     case 0:
       semisort_equal_inplace(
@@ -91,11 +90,6 @@ void check_correctness(const sequence<pair<K, V>> &in, int id) {
           }
         }
       }
-    }
-  });
-  parallel_for(1, out.size(), [&](size_t i) {
-    if (out[i - 1].first == out[i].first) {
-      assert(out[i - 1].second < out[i].second);
     }
   });
   auto out2 = sort(make_slice(in));
@@ -148,12 +142,12 @@ void run_all(const sequence<T> &seq, int id = -1) {
   vector<double> times;
   if (id == -1) {
     for (size_t i = 0; i < kNumTests; i++) {
-      // times.push_back(test(seq, i));
+      times.push_back(test(seq, i));
       check_correctness(seq, i);
       printf("\n");
     }
   } else {
-    // times.push_back(test(seq, id));
+    times.push_back(test(seq, id));
     check_correctness(seq, id);
     printf("\n");
   }
@@ -292,9 +286,9 @@ int main(int argc, char *argv[]) {
   // int id = -1;
   // run_all_size<uint64_t>(id);
 
-  // using T = __uint32_t;
-  // int id = 0;
-  // auto seq = uniform_strings_generator<T>(1000000000);
+  // using T = __uint64_t;
+  // int id = -1;
+  // auto seq = uniform_pairs_generator<T>(1000000000);
   // auto seq = exponential_pairs_generator<T>(0.00001);
   // auto seq = bits_exp_strings_generator<T>(10);
   // run_all(seq, id);

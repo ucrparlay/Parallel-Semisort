@@ -177,10 +177,9 @@ sequence<s_size_t> semisort_equal_(slice<InIterator, InIterator> In, slice<OutIt
       return hash_v & LIGHT_MASK;
     }
   };
-  // We assume the bucket size is less than 2^16
-  auto get_bits = tabulate<uint16_t>(n, f);
-  auto bucket_offsets = sequence<size_t>();
-  bucket_offsets = std::get<0>(
+  // We assume the number of buckets is less than 2^16
+  auto get_bits = delayed_seq<uint16_t>(n, f);
+  auto bucket_offsets = std::get<0>(
       internal::count_sort_<assignment_tag, s_size_t>(In, Out, make_slice(get_bits), num_buckets, parallelism, false));
 
   if (parallelism == 1.0) t_dis.next("component of distribute: buckets");
@@ -295,12 +294,12 @@ sequence<s_size_t> semisort_less_(slice<InIterator, InIterator> In, slice<OutIte
           In, Out, [&](const in_type& a, const in_type& b) { return comp(g(a), g(b)); }, true);
       if (return_offsets) {
         for (size_t i = 0; i < n; i++) {
-          if (i == 0 || !equal(g(Out[i]), g(Out[i - 1]))) {
+          if (i == 0 || !equal(g(Out[i - 1]), g(Out[i]))) {
             offsets.push_back(i);
           }
         }
+        offsets.push_back(n);
       }
-      offsets.push_back(n);
     }
     return offsets;
   }
@@ -353,10 +352,9 @@ sequence<s_size_t> semisort_less_(slice<InIterator, InIterator> In, slice<OutIte
       return hash_v & LIGHT_MASK;
     }
   };
-  // We assume the bucket size is less than 2^16
-  auto get_bits = tabulate<uint16_t>(n, f);
-  auto bucket_offsets = sequence<size_t>();
-  bucket_offsets = std::get<0>(
+  // We assume the number of buckets is less than 2^16
+  auto get_bits = delayed_seq<uint16_t>(n, f);
+  auto bucket_offsets = std::get<0>(
       internal::count_sort_<assignment_tag, s_size_t>(In, Out, make_slice(get_bits), num_buckets, parallelism, false));
 
   if (parallelism == 1.0) t_dis.next("component of distribute: buckets");
@@ -374,10 +372,7 @@ sequence<s_size_t> semisort_less_(slice<InIterator, InIterator> In, slice<OutIte
   if (parallelism == 1.0) t.next("distribute");
 
   // 3. sort within each bucket
-  sequence<sequence<s_size_t>> inner_offsets;
-  if (return_offsets) {
-    inner_offsets = sequence<sequence<s_size_t>>(light_buckets + 1);
-  }
+  sequence<sequence<s_size_t>> inner_offsets(return_offsets ? light_buckets + 1 : 0);
   parallel_for(
       0, light_buckets,
       [&](size_t i) {
