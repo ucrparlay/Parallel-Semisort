@@ -131,7 +131,8 @@ std::pair<sequence<size_t>, bool> count_sort_(slice<InIterator, InIterator> In,
   // size_t bucket_upper =
   //     1 + n * sizeof(T) / (4 * num_buckets * sizeof(s_size_t));
   // size_t num_blocks = (std::min)(bucket_upper, (std::max)(par_lower, size_lower));
-  size_t num_blocks = 1 + n * sizeof(T) / std::max<size_t>(num_buckets * 500, 5000);
+  // size_t num_blocks = 1 + n * sizeof(T) / std::max<size_t>(num_buckets * 500, 5000);
+  size_t num_blocks = 1 + n * sizeof(T) / (num_buckets * 5000);
   
   // if insufficient parallelism, sort sequentially
   if (n < SEQ_THRESHOLD || num_blocks == 1 || num_threads == 1) {
@@ -142,6 +143,12 @@ std::pair<sequence<size_t>, bool> count_sort_(slice<InIterator, InIterator> In,
 
   size_t block_size = ((n - 1) / num_blocks) + 1;
   size_t m = num_blocks * num_buckets;
+
+#ifdef BREAKDOWN
+  if (parallelism == 1.0) {
+    printf("num_blocks: %zu, num_buckets: %zu\n", num_blocks, num_buckets);
+  }
+#endif
 
   auto counts = sequence<s_size_t>::uninitialized(m);
 

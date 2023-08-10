@@ -20,6 +20,7 @@ private:
     return std::chrono::system_clock::now();
   }
 
+#ifdef BREAKDOWN
   void report(double time, std::string str) {
     std::ios::fmtflags cout_settings = std::cout.flags();
     std::cout.precision(4);
@@ -30,6 +31,9 @@ private:
     std::cout << time << std::endl;
     std::cout.flags(cout_settings);
   }
+#else
+  void report(double, std::string) {}
+#endif
 
   double diff(time_t t1, time_t t2) {
     return std::chrono::duration_cast<std::chrono::microseconds>(t1 - t2).count() / 1000000.0;
