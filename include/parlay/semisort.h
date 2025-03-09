@@ -222,7 +222,7 @@ sequence<s_size_t> semisort_equal_(slice<InIterator, InIterator> In, slice<OutIt
   sequence<s_size_t> offsets;
   if (return_offsets) {
     inner_offsets[light_buckets] =
-        tabulate<s_size_t>(heavy_buckets, [&](size_t i) { return bucket_offsets[i + light_buckets]; });
+        tabulate<s_size_t>(heavy_buckets + 1, [&](size_t i) { return bucket_offsets[i + light_buckets]; });
     offsets = flatten(inner_offsets);
   }
   if (parallelism == 1.0) t.next("compute offsets");
@@ -279,8 +279,7 @@ sequence<s_size_t> semisort_less_(slice<InIterator, InIterator> In, slice<OutIte
   if (n < SEMISORT_BASE_CASE_SIZE || parallelism < .0001 || shift_bits == hash_bits) {
     sequence<s_size_t> offsets;
     if constexpr (inplace_tag::value == true) {
-      internal::seq_sort_inplace(
-          In, [&](const in_type& a, const in_type& b) { return comp(g(a), g(b)); }, true);
+      internal::seq_sort_inplace(In, [&](const in_type& a, const in_type& b) { return comp(g(a), g(b)); }, true);
       if (return_offsets) {
         for (size_t i = 0; i < n; i++) {
           if (i == 0 || !equal(g(In[i]), g(In[i - 1]))) {
@@ -397,7 +396,7 @@ sequence<s_size_t> semisort_less_(slice<InIterator, InIterator> In, slice<OutIte
   sequence<s_size_t> offsets;
   if (return_offsets) {
     inner_offsets[light_buckets] =
-        tabulate<s_size_t>(heavy_buckets, [&](size_t i) { return bucket_offsets[i + light_buckets]; });
+        tabulate<s_size_t>(heavy_buckets + 1, [&](size_t i) { return bucket_offsets[i + light_buckets]; });
     offsets = flatten(inner_offsets);
   }
   if (parallelism == 1.0) t.next("compute offsets");
