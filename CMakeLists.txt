@@ -286,3 +286,13 @@ if (PARLAY_EXAMPLE_DATA)
 else()
   message(STATUS "example data: Off (add -DPARLAY_EXAMPLE_DATA=On to download)")
 endif()
+
+
+# Add semisort executable
+add_executable(semisort src/semisort.cpp)
+
+# Ensure it includes ParlayLib headers
+target_include_directories(semisort PRIVATE ${PARLAY_INCLUDE_DIR})
+
+# Link it with Parlay
+target_link_libraries(semisort PRIVATE parlay)

@@ -39,7 +39,7 @@ ifdef NGRAM
 CPPFLAGS += -DNGRAM
 endif
 
-all: semisort histogram collect_reduce
+all: semisort
 
 semisort: semisort.h semisort.cpp internal/integer_sort.h internal/counting_sort.h
 	$(CC) $(CPPFLAGS) semisort.cpp -o semisort

@@ -59,7 +59,7 @@ sequence<s_size_t> semisort_equal_serial(slice<InIterator, InIterator> In, slice
   }
   // copy back if inplace
   if constexpr (inplace_tag::value == true) {
-    uninitialized_relocate_n(In.begin(), Out.begin(), n);
+    parlay::uninitialized_relocate(Out.begin(), Out.end(), In.begin());
   }
   return offsets;
 }
@@ -71,7 +71,7 @@ template<typename Iterator, typename GetKey,
              std::equal_to<typename std::invoke_result<GetKey, typename slice<Iterator, Iterator>::value_type>::type>>
 void semisort_serial_inplace(slice<Iterator, Iterator> In, GetKey g, Hash hash = {}, Equal equal = {}) {
   using in_type = typename slice<Iterator, Iterator>::value_type;
-  auto Tmp = sequence<in_type>::uninitialized(In.size());
+  auto Tmp = internal::uninitialized_sequence<in_type>(In.size());
   size_t max32 = static_cast<size_t>((std::numeric_limits<uint32_t>::max)());
   if (In.size() < max32) {
     semisort_equal_serial<uint32_t, std::true_type, uninitialized_relocate_tag>(In, make_slice(Tmp), g, hash, equal,
@@ -237,7 +237,7 @@ template<typename Iterator, typename GetKey,
 auto semisort_equal(slice<Iterator, Iterator> In, GetKey g, Hash hash = {}, Equal equal = {}) {
   using in_type = typename slice<Iterator, Iterator>::value_type;
   auto Out = sequence<in_type>::uninitialized(In.size());
-  auto Tmp = sequence<in_type>::uninitialized(In.size());
+  auto Tmp = internal::uninitialized_sequence<in_type>(In.size());
   size_t max32 = static_cast<size_t>((std::numeric_limits<uint32_t>::max)());
   if (In.size() < max32) {
     semisort_equal_<uint32_t, std::false_type, uninitialized_copy_tag>(In, make_slice(Out), make_slice(Tmp), g, hash,
@@ -256,7 +256,7 @@ template<typename Iterator, typename GetKey,
              std::equal_to<typename std::invoke_result<GetKey, typename slice<Iterator, Iterator>::value_type>::type>>
 void semisort_equal_inplace(slice<Iterator, Iterator> In, GetKey g, Hash hash = {}, Equal equal = {}) {
   using in_type = typename slice<Iterator, Iterator>::value_type;
-  auto Tmp = sequence<in_type>::uninitialized(In.size());
+  auto Tmp = internal::uninitialized_sequence<in_type>(In.size());
   size_t max32 = static_cast<size_t>((std::numeric_limits<uint32_t>::max)());
   if (In.size() < max32) {
     semisort_equal_<uint32_t, std::true_type, uninitialized_relocate_tag>(In, make_slice(Tmp), In, g, hash, equal);
@@ -411,7 +411,7 @@ template<typename Iterator, typename GetKey,
 auto semisort_less(slice<Iterator, Iterator> In, GetKey g, Hash hash = {}, Compare comp = {}) {
   using in_type = typename slice<Iterator, Iterator>::value_type;
   auto Out = sequence<in_type>::uninitialized(In.size());
-  auto Tmp = sequence<in_type>::uninitialized(In.size());
+  auto Tmp = internal::uninitialized_sequence<in_type>(In.size());
   size_t max32 = static_cast<size_t>((std::numeric_limits<uint32_t>::max)());
   if (In.size() < max32) {
     semisort_less_<uint32_t, std::false_type, uninitialized_copy_tag>(In, make_slice(Out), make_slice(Tmp), g, hash,
@@ -430,7 +430,7 @@ template<typename Iterator, typename GetKey,
              std::less<typename std::invoke_result<GetKey, typename slice<Iterator, Iterator>::value_type>::type>>
 void semisort_less_inplace(slice<Iterator, Iterator> In, GetKey g, Hash hash = {}, Compare comp = {}) {
   using in_type = typename slice<Iterator, Iterator>::value_type;
-  auto Tmp = sequence<in_type>::uninitialized(In.size());
+  auto Tmp = internal::uninitialized_sequence<in_type>(In.size());
   size_t max32 = static_cast<size_t>((std::numeric_limits<uint32_t>::max)());
   if (In.size() < max32) {
     semisort_less_<uint32_t, std::true_type, uninitialized_relocate_tag>(In, make_slice(Tmp), In, g, hash, comp);
