@@ -21,8 +21,8 @@
 
 #include "../parallel.h"
 #include "../portability.h"
+#include "../relocation.h"
 #include "../type_traits.h"      // IWYU pragma: keep  // for is_trivially_relocatable
-#include "../utilities.h"
 
 #ifdef PARLAY_DEBUG_UNINITIALIZED
 #include "debug_uninitialized.h"
@@ -357,7 +357,6 @@ struct alignas(uint64_t) sequence_base {
       uint64_t n : 48;
 
       long_seq(capacitated_buffer _buffer, uint64_t _n) : buffer(_buffer), n(_n) {}
-      ~long_seq() = default;
 
       void set_size(size_t new_size) { n = new_size; }
 
@@ -399,7 +398,7 @@ struct alignas(uint64_t) sequence_base {
     // sequence.
     struct _data_impl {
       _data_impl() {}
-      ~_data_impl(){};
+      ~_data_impl(){}
 
       union {
         typename std::conditional<use_sso, short_seq, void*>::type short_mode;
@@ -562,7 +561,16 @@ struct alignas(uint64_t) sequence_base {
         auto n = size();
         auto dest_buffer = new_buffer.data();
         auto current_buffer = data();
-        uninitialized_relocate_n_a(dest_buffer, current_buffer, n, *this);
+
+        if constexpr (is_trivial_allocator_v<T_allocator_type, T>) {
+          parlay::uninitialized_relocate_n(current_buffer, n, dest_buffer);
+        }
+        else {
+          parallel_for(0, n, [&](size_t i){
+            std::allocator_traits<T_allocator_type>::construct(alloc, std::addressof(dest_buffer[i]), std::move(current_buffer[i]));
+            std::allocator_traits<T_allocator_type>::destroy(alloc, std::addressof(current_buffer[i]));
+          });
+        }
 
         // Destroy the old stuff
         if (!is_small()) {
@@ -580,7 +588,7 @@ struct alignas(uint64_t) sequence_base {
     }
   };
 
-  sequence_base() : storage() {}
+  sequence_base() : storage() { num_workers();  /* Touch the scheduler to force it to initialize before any sequence */ }
   explicit sequence_base(const storage_impl& other) : storage(other) {}
   explicit sequence_base(storage_impl&& other) : storage(std::move(other)) {}
   ~sequence_base() {}

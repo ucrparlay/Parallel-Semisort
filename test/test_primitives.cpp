@@ -307,9 +307,10 @@ TEST(TestPrimitives, TestAnyOf) {
   auto s1 = parlay::reverse(parlay::tabulate(50000, [](int i) { return 2*i; }));
   auto s2 = parlay::reverse(parlay::tabulate(50000, [](int i) { return 2*i + 1; }));
 
-  ASSERT_TRUE(parlay::any_of(s, [](int x) { return x % 2 == 0; }));
-  ASSERT_TRUE(parlay::any_of(s1, [](int x) { return x % 2 == 0; }));
-  ASSERT_FALSE(parlay::any_of(s2, [](int x) { return x % 2 == 0; }));
+  ASSERT_TRUE(parlay::any_of(s, [](int x) { return x == 0; }));         // Single match
+  ASSERT_TRUE(parlay::any_of(s, [](int x) { return x % 2 == 0; }));     // Multiple matches
+  ASSERT_TRUE(parlay::any_of(s1, [](int x) { return x % 2 == 0; }));    // All are matches
+  ASSERT_FALSE(parlay::any_of(s2, [](int x) { return x % 2 == 0; }));   // No matches
 }
 
 TEST(TestPrimitives, TestNoneOf) {
@@ -606,6 +607,57 @@ TEST(TestPrimitives, TestFlattenRvalueRef) {
   ASSERT_TRUE(seqs.empty());
 }
 
+TEST(TestPrimitives, TestFlattenNestedDelayed) {
+  auto G = parlay::tabulate(10000, [](size_t i) {
+    if (parlay::hash64_2(i) % 2 != 0)
+      return parlay::tabulate(i, [](size_t j) -> int {
+        return j;
+      });
+    else
+      return parlay::sequence<int>{};
+  });
+  
+  auto seq = parlay::flatten(parlay::delayed_tabulate(G.size(), [&](int i) {
+    return parlay::delayed_map(G[i], [=](int x) {
+      return std::make_pair(x, i);
+    });
+  }));
+
+  auto seq2 = parlay::flatten(parlay::tabulate(G.size(), [&](int i) {
+    return parlay::map(G[i], [=](int x) {
+      return std::make_pair(x, i);
+    });
+  }));
+
+  ASSERT_EQ(seq, seq2);
+}
+
+TEST(TestPrimitives, TestFlattenDelayed) {
+  auto G = parlay::tabulate(10000, [](size_t i) {
+    if (parlay::hash64_2(i) % 2 != 0)
+      return parlay::tabulate(i, [](size_t j) -> int {
+        return j;
+      });
+    else
+      return parlay::sequence<int>{};
+  });
+
+  // Use parlay::sequence with std::allocator as the inner sequence to better catch use-after-free
+  auto seq = parlay::flatten(parlay::delayed_tabulate(G.size(), [&](int i) {
+    return parlay::to_sequence<std::pair<int,int>, std::allocator<int>>(parlay::map(G[i], [=](int x) {
+      return std::make_pair(x, i);
+    }));
+  }));
+
+  auto seq2 = parlay::flatten(parlay::tabulate(G.size(), [&](int i) {
+    return parlay::map(G[i], [=](int x) {
+      return std::make_pair(x, i);
+    });
+  }));
+
+  ASSERT_EQ(seq, seq2);
+}
+
 TEST(TestPrimitives, TestTokens) {
   auto chars = parlay::to_sequence(std::string(" The quick\tbrown fox jumped over  the lazy\ndog "));
   auto words = parlay::sequence<parlay::sequence<char>> {
@@ -776,6 +828,18 @@ TEST(TestPrimitives, TestRank) {
   }
 }
 
+TEST(TestPrimitives, TestKthSmallestCopySmall) {
+  std::default_random_engine eng{2022};
+  auto s = parlay::to_sequence(parlay::iota<size_t>(2000));
+  std::shuffle(s.begin(), s.end(), eng);
+
+  // Test every possible rank. We need n > 1000 since that's the base
+  // case where the implementation just sorts and returns the answer.
+  for (size_t i = 0; i < 2000; i++) {
+    ASSERT_EQ(parlay::kth_smallest_copy(s, i), i);
+  }
+}
+
 TEST(TestPrimitives, TestKthSmallestCopy) {
   std::default_random_engine eng{2022};
   auto s = parlay::to_sequence(parlay::iota<size_t>(100000));
@@ -785,6 +849,7 @@ TEST(TestPrimitives, TestKthSmallestCopy) {
   ASSERT_EQ(parlay::kth_smallest_copy(s, 50000), 50000);
   ASSERT_EQ(parlay::kth_smallest_copy(s, 99999), 99999);
 
+  // Test a few spaced out ranks
   for (size_t i = 7919; i < 100000; i+= 7907) {
     ASSERT_EQ(parlay::kth_smallest_copy(s, i), i);
   }
@@ -802,4 +867,12 @@ TEST(TestPrimitives, TestKthSmallest) {
   for (size_t i = 7919; i < 100000; i+= 7907) {
     ASSERT_EQ(*parlay::kth_smallest(s, i), i);
   }
+}
+
+TEST(TestPrimitives, TestKthSmallestAllDuplicates) {
+  parlay::sequence<int> a(2000, 1);
+  int k = 1000;
+  auto result = parlay::kth_smallest(a, k);
+  ASSERT_NE(result, a.end());
+  ASSERT_EQ(*result, 1);
 }

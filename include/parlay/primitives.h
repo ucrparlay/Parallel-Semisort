@@ -30,6 +30,7 @@
 #include "parallel.h"
 #include "random.h"
 #include "range.h"
+#include "relocation.h"
 #include "sequence.h"
 #include "slice.h"
 #include "type_traits.h"               // IWYU pragma: keep
@@ -535,6 +536,8 @@ template <typename R, typename UnaryFunction>
 void for_each(R&& r , UnaryFunction&& f) {
   static_assert(is_random_access_range_v<R>);
   static_assert(std::is_invocable_v<UnaryFunction, range_reference_type_t<R>>);
+  // TODO: For many iterator types, calling operator[] is slower than ++.
+  // Would be nice if this could instead use ++ at the leaves
   parallel_for(0, parlay::size(r),
     [&f, it = std::begin(r)](size_t i) { f(it[i]); });
 }
@@ -570,7 +573,7 @@ template <typename R, typename UnaryPredicate>
 bool any_of(R&& r, UnaryPredicate&& p) {
   static_assert(is_random_access_range_v<R>);
   static_assert(std::is_invocable_r_v<bool, UnaryPredicate, range_reference_type_t<R>>);
-  return parlay::count_if(r, std::forward<UnaryPredicate>(p)) > 1;
+  return parlay::count_if(r, std::forward<UnaryPredicate>(p)) > 0;
 }
 
 template <typename R, typename UnaryPredicate>
@@ -769,7 +772,7 @@ inline bool operator<(const sequence<T,Alloc,EnableSSO> &a, const sequence<T,All
   auto ea = sa + (std::min)(a.size(),b.size());
   while (sa < ea && *sa == *sb) {sa++; sb++;}
   return sa == ea ? (a.size() < b.size()) : *sa < *sb;
-};
+}
 
 
 /* -------------------- Remove duplicates -------------------- */
@@ -977,6 +980,12 @@ auto flatten(R&& r) {
   static_assert(std::is_constructible_v<range_value_type_t<range_reference_type_t<R>>,
                                         range_reference_type_t<range_reference_type_t<R>>>);
 
+  // For prvalue ranges, we materialize the range to avoid generating its elements multiple
+  // times, or worse, generating them then taking references to them that dangle!
+  if constexpr (!std::is_reference_v<range_reference_type_t<R>>) {
+    return flatten(to_sequence(std::forward<R>(r)));
+  }
+
   using T = range_value_type_t<range_reference_type_t<R>>;
   auto offsets = tabulate(parlay::size(r), [it = std::begin(r)](size_t i)
                           { return parlay::size(it[i]); });
@@ -984,8 +993,9 @@ auto flatten(R&& r) {
   auto res = sequence<T>::uninitialized(len);
   parallel_for(0, parlay::size(r), [&, it = std::begin(r)](size_t i) {
     auto dit = std::begin(res)+offsets[i];
-    auto sit = std::begin(it[i]);
-    parallel_for(0, parlay::size(it[i]), [=] (size_t j) {
+    auto&& inner = it[i];
+    auto sit = std::begin(inner);
+    parallel_for(0, parlay::size(inner), [=] (size_t j) {
       assign_uninitialized(*(dit+j), *(sit+j));
     }, 1000);
   });
@@ -1001,7 +1011,7 @@ auto flatten(sequence<sequence<T>>&& r) {
   size_t len = internal::scan_inplace(make_slice(offsets), plus<size_t>());
   auto res = sequence<T>::uninitialized(len);
   parallel_for(0, parlay::size(r), [&, it = std::begin(r)](size_t i) {
-    uninitialized_relocate_n(std::begin(res)+offsets[i], std::begin(it[i]), it[i].size());
+    parlay::uninitialized_relocate(std::begin(it[i]), std::end(it[i]), std::begin(res)+offsets[i]);
     clear_relocated(it[i]);
   });
   r.clear();
@@ -1259,19 +1269,35 @@ auto kth_smallest_copy(Range&& in, size_t k, Compare&& less = {}) {
 
   // Determine which of the 32 buckets each key belongs in
   internal::heap_tree ss(pivots);
-  auto ids = parlay::tabulate(n, [&] (long i) -> unsigned char {
-    return ss.rank(it[i], less);});
+  auto ids = parlay::tabulate(n, [&] (size_t i) -> unsigned char {
+    return ss.rank(it[i], less); });
 
   // Count how many in keys are each bucket
   auto sums = parlay::histogram_by_index(ids, sample_size+1);
   
   // find which bucket k belongs in, and pack the keys in that bucket into next
   auto [offsets, total] = parlay::scan(sums);
-  auto id = std::upper_bound(offsets.begin(), offsets.end(), k) - offsets.begin() - 1;
-  auto next = parlay::pack(in, parlay::delayed_map(ids, [=] (auto b) {return b == id;}));
+  assert(total == n);
+
+  auto id = static_cast<size_t>(std::upper_bound(offsets.begin(), offsets.end(), k) - offsets.begin()) - 1;
+  auto bucket_length = ((id == offsets.size() - 1) ? total : offsets[id+1]) - offsets[id];
+
+  // Grab the contents of the bucket containing the k'th element.  Exclude the pivot
+  // elements from the bucket when recursing in case there is a massive number of
+  // duplicates of the pivot element
+  auto filtered_bucket = parlay::pack(in, parlay::tabulate(n, [&] (size_t i) -> bool {
+    return ids[i] == id && (ids[i] == sample_size || it[i] != pivots[ids[i]]);
+  }));
+  assert(filtered_bucket.size() <= bucket_length);
+  auto filtered_bucket_length = filtered_bucket.size();
+
+  // Special case: the k'th element is equal to the pivot of this bucket!
+  if (k >= offsets[id] + filtered_bucket_length && k < offsets[id] + bucket_length) {
+    return pivots[id];
+  }
   
   // recurse on much smaller set, adjusting k as needed
-  return kth_smallest_copy(next, k - offsets[id], std::forward<Compare>(less));
+  return kth_smallest_copy(filtered_bucket, k - offsets[id], std::forward<Compare>(less));
 }
 
 template <typename Range, typename Compare = std::less<>>

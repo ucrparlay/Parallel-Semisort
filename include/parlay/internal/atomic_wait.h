@@ -289,7 +289,7 @@ The strategy is chosen this way, by platform:
         }
 
     template <class _Tp, typename std::enable_if<__type_used_directly(_Tp), int>::type = 1>
-    void __cxx_atomic_try_wait_slow(_Tp const* ptr, _Tp val, int order) {
+    void __cxx_atomic_try_wait_slow(_Tp const* ptr, _Tp val, [[maybe_unused]] int order) {
     #ifdef __TABLE
         auto * const c = __contention(ptr);
         __atomic_fetch_add(&c->waiters, 1, __ATOMIC_RELAXED);
@@ -398,23 +398,23 @@ extern inline contended_t * __contention(volatile void const * p) {
 
 namespace parlay {
 
-    template <class _Tp>
-    void atomic_wait_explicit(const std::atomic<_Tp>* a, parlay::type_identity_t<_Tp> val, std::memory_order order) {
+    template <class Tp_>
+    void atomic_wait_explicit(const std::atomic<Tp_>* a, parlay::type_identity_t<Tp_> val, std::memory_order order) {
         std::atomic_wait_explicit(a, val, order);
     }
 
-    template <class _Tp>
-    void atomic_wait(const std::atomic<_Tp>* a, parlay::type_identity_t<_Tp> val) {
+    template <class Tp_>
+    void atomic_wait(const std::atomic<Tp_>* a, parlay::type_identity_t<Tp_> val) {
         std::atomic_wait(a, val);
     }
 
-    template <class _Tp>
-    void atomic_notify_one(std::atomic<_Tp>* a) {
+    template <class Tp_>
+    void atomic_notify_one(std::atomic<Tp_>* a) {
         std::atomic_notify_one(a);
     }
 
-    template <class _Tp>
-    void atomic_notify_all(std::atomic<_Tp>* a) {
+    template <class Tp_>
+    void atomic_notify_all(std::atomic<Tp_>* a) {
         std::atomic_notify_all(a);
     }
 

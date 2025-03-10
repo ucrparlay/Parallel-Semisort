@@ -8,15 +8,24 @@
 #ifndef PARLAY_SAMPLE_SORT_H_
 #define PARLAY_SAMPLE_SORT_H_
 
-#include <cmath>
+#include <cassert>
 #include <cstdio>
-#include <cstring>
+
+#include <iterator>
+#include <limits>
+#include <type_traits>
 
 #include "bucket_sort.h"
 #include "quicksort.h"
 #include "sequence_ops.h"
 #include "transpose.h"
+#include "uninitialized_sequence.h"
 
+#include "../delayed_sequence.h"
+#include "../parallel.h"
+#include "../relocation.h"
+#include "../sequence.h"
+#include "../slice.h"
 #include "../utilities.h"
 
 namespace parlay {
@@ -169,7 +178,7 @@ void sample_sort_inplace_(slice<InIterator, InIterator> In,
 
     // Sample block is already sorted, so we don't need to sort it again.
     // We can just move it straight over into the other sorted blocks
-    uninitialized_relocate_n(Tmp.begin(), sample_set.begin(), sample_set_size);
+    parlay::uninitialized_relocate(sample_set.begin(), sample_set.end(), Tmp.begin());
 
     // move data from blocks to buckets
     auto bucket_offsets =

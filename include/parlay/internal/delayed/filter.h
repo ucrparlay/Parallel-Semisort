@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "../../range.h"
+#include "../../relocation.h"
 #include "../../sequence.h"
 #include "../../utilities.h"
 
@@ -95,7 +96,7 @@ struct block_delayed_filter_t :
       }
     }
     auto res = sequence<It>::uninitialized(n);
-    uninitialized_relocate_n(res.begin(), temp.begin(), n);
+    parlay::uninitialized_relocate_n(temp.begin(), n, res.begin());
     return res;
   }
 
