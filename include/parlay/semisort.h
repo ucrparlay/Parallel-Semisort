@@ -55,7 +55,6 @@ sequence<s_size_t> semisort_equal_serial(slice<InIterator, InIterator> In, slice
         offsets.push_back(i);
       }
     }
-    offsets.push_back(n);
   }
   // copy back if inplace
   if constexpr (inplace_tag::value == true) {
@@ -222,7 +221,7 @@ sequence<s_size_t> semisort_equal_(slice<InIterator, InIterator> In, slice<OutIt
   sequence<s_size_t> offsets;
   if (return_offsets) {
     inner_offsets[light_buckets] =
-        tabulate<s_size_t>(heavy_buckets + 1, [&](size_t i) { return bucket_offsets[i + light_buckets]; });
+        tabulate<s_size_t>(heavy_buckets, [&](size_t i) { return bucket_offsets[i + light_buckets]; });
     offsets = flatten(inner_offsets);
   }
   if (parallelism == 1.0) t.next("compute offsets");
@@ -286,7 +285,6 @@ sequence<s_size_t> semisort_less_(slice<InIterator, InIterator> In, slice<OutIte
             offsets.push_back(i);
           }
         }
-        offsets.push_back(n);
       }
     } else {
       internal::seq_sort_<assignment_tag>(
@@ -297,7 +295,6 @@ sequence<s_size_t> semisort_less_(slice<InIterator, InIterator> In, slice<OutIte
             offsets.push_back(i);
           }
         }
-        offsets.push_back(n);
       }
     }
     return offsets;
@@ -396,7 +393,7 @@ sequence<s_size_t> semisort_less_(slice<InIterator, InIterator> In, slice<OutIte
   sequence<s_size_t> offsets;
   if (return_offsets) {
     inner_offsets[light_buckets] =
-        tabulate<s_size_t>(heavy_buckets + 1, [&](size_t i) { return bucket_offsets[i + light_buckets]; });
+        tabulate<s_size_t>(heavy_buckets, [&](size_t i) { return bucket_offsets[i + light_buckets]; });
     offsets = flatten(inner_offsets);
   }
   if (parallelism == 1.0) t.next("compute offsets");
